@@ -1,8 +1,10 @@
-# Local / machine-specific files — never stage
+# Project-specific files
 *.local.*
 *.local
+*.log
 
 # Editor / OS cruft
+.vscode/
 *.swp
 *~
 .DS_Store
