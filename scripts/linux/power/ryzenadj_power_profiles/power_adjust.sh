@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 RYZENADJ="/path/to/ryzenadj"
 INTERVAL=5

@@ -11,8 +11,9 @@ scripts/
 │   │   └── linux_fix_sound.sh
 │   ├── input/
 │   │   └── rotateButton.sh
-│   └── power/
-│       └── ryzenadj_power_profiles/
+│   ├── power/
+│   │   └── ryzenadj_power_profiles/
+│   └── v3se-helper.sh
 └── windows/
     ├── display/
     │   ├── Cru V3 Profile.zip
@@ -34,13 +35,13 @@ See [fixes/linux-audio.md](fixes/linux-audio.md#volume-buttons-not-working-when-
 
 #### `audio/alsa-soft-mixer.conf`
 
-WirePlumber drop-in that forces the `Family 17h/19h HD Audio Controller` card onto the software mixer so the global volume keys affect speakers. Install to `/etc/wireplumber/wireplumber.conf.d/` (system) or `~/.config/wireplumber/wireplumber.conf.d/` (per-user).
+WirePlumber drop-in that forces the `Family 17h/19h HD Audio Controller` card onto the software mixer so the global volume keys affect speakers. Install to `/etc/wireplumber/wireplumber.conf.d/` (system) or `${XDG_CONFIG_HOME:-$HOME/.config}/wireplumber/wireplumber.conf.d/` (per-user).
 
 See [fixes/linux-audio.md](fixes/linux-audio.md#global-volume-control-with-the-speaker--workaround-a-wireplumber).
 
 #### `audio/alsa-disable-suspension.conf`
 
-WirePlumber drop-in that disables ALSA session suspension on all input/output nodes. Fixes headphone-port dropouts every few seconds. Install to `~/.config/wireplumber/wireplumber.conf.d/`.
+WirePlumber drop-in that disables ALSA session suspension on all input/output nodes. Fixes headphone-port dropouts every few seconds. Install to `${XDG_CONFIG_HOME:-$HOME/.config}/wireplumber/wireplumber.conf.d/`.
 
 See [fixes/linux-audio.md](fixes/linux-audio.md#disable-audio-session-suspension).
 
@@ -51,6 +52,17 @@ See [fixes/linux-audio.md](fixes/linux-audio.md#disable-audio-session-suspension
 KDE-only. Toggles the primary output between normal and left rotation using `kscreen-doctor`. Bind it to the rotation button or a shortcut.
 
 See [fixes/linux-input.md](fixes/linux-input.md#manual-rotation-script-kde).
+
+### Helper
+
+#### `v3se-helper.sh`
+
+Quick-fix dispatcher for recurring V3 SE recoveries. Subcommands:
+
+- `volume` — restart `wireplumber` to recover global volume control. Refuses to run unless [alsa-soft-mixer.conf](../scripts/linux/audio/alsa-soft-mixer.conf) is installed at either `/etc/wireplumber/wireplumber.conf.d/` or `${XDG_CONFIG_HOME:-$HOME/.config}/wireplumber/wireplumber.conf.d/` (workaround A — see [fixes/linux-audio.md](fixes/linux-audio.md#global-volume-control-with-the-speaker--workaround-a-wireplumber)).
+- `rotate` — manual escape hatch that toggles screen rotation via `kscreen-doctor` (KDE). For normal use, bind [rotateButton.sh](../scripts/linux/input/rotateButton.sh) to the hardware rotate button instead.
+
+Pass `-v` for verbose output, `-h` for help.
 
 ### Power
 

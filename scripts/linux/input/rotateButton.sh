@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 
 ROTATION="`kscreen-doctor -o | grep Rotation | cut -d ' ' -f 2`"
 

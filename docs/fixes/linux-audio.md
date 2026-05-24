@@ -25,7 +25,7 @@ ModelTabletModeNoSuspend=1
 > [!WARNING]
 > `alsa-firmware` is required for this to work.
 
-1. Copy [alsa-soft-mixer.conf](../../scripts/linux/audio/alsa-soft-mixer.conf) to `/etc/wireplumber/wireplumber.conf.d/alsa-soft-mixer.conf` (system-wide) or `~/.config/wireplumber/wireplumber.conf.d/alsa-soft-mixer.conf` (per-user).
+1. Copy [alsa-soft-mixer.conf](../../scripts/linux/audio/alsa-soft-mixer.conf) to `/etc/wireplumber/wireplumber.conf.d/alsa-soft-mixer.conf` (system-wide) or `${XDG_CONFIG_HOME:-$HOME/.config}/wireplumber/wireplumber.conf.d/alsa-soft-mixer.conf` (per-user).
 2. Reboot.
 
 > [!NOTE]
@@ -77,4 +77,4 @@ _Credits to ChaosSpectre & makito89._
 
 Fixes the headphone port dropping every few seconds when used.
 
-Copy [alsa-disable-suspension.conf](../../scripts/linux/audio/alsa-disable-suspension.conf) to `~/.config/wireplumber/wireplumber.conf.d/alsa-disable-suspension.conf`.
+Copy [alsa-disable-suspension.conf](../../scripts/linux/audio/alsa-disable-suspension.conf) to `${XDG_CONFIG_HOME:-$HOME/.config}/wireplumber/wireplumber.conf.d/alsa-disable-suspension.conf`.
