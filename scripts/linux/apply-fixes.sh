@@ -36,6 +36,7 @@ usage() {
 		  -h, --help         Show this help.
 
 		Key=value overrides (skip the prompt for that fix and force a value):
+		  arch.aur.packages={true|false}
 		  audio.volume.keys={true|false}
 		  audio.volume.workaround={A|B|none}
 		  audio.suspension={true|false}
@@ -226,6 +227,115 @@ reg() {
 	FIX_ORDER+=("$1")
 	FIX_DESC[$1]=$2
 	FIX_DEFAULT[$1]=$3
+}
+
+# --- arch.aur.packages -----------------------------------------------------
+
+reg arch.aur.packages \
+	"Install AUR packages: minisforum-v3se-dsdt (DSDT fix) and minisforum-v3-accelerometer" \
+	true
+
+applies_arch_aur_packages() {
+	if [ "$DISTRO_FAMILY" != arch ]; then
+		FIX_NOTE[arch.aur.packages]="not an Arch-family distro; skipping."
+		return 1
+	fi
+	return 0
+}
+
+preview_arch_aur_packages() {
+	cat <<-EOF
+		Packages to install from the AUR / Github:
+		  - minisforum-v3-accelerometer  (AUR — compatible with the V3 SE)
+		  - minisforum-v3se-dsdt         (Github: Keyaku/minisforum-v3se-dsdt)
+
+		Per package: try paru, then yay, otherwise fall back to
+		  git clone <repo> && makepkg -si --noconfirm
+
+		The DSDT package's source is 'manual://dsdt.dat', so AUR helpers can't
+		fetch it; this script dumps /sys/firmware/acpi/tables/DSDT into the
+		build dir for that one (requires sudo).
+	EOF
+}
+
+aur_helper_install() {
+	local pkg=$1
+	if command -v paru >/dev/null 2>&1; then
+		run paru -S --needed --noconfirm -- "$pkg" && return 0
+	elif command -v yay >/dev/null 2>&1; then
+		run yay -S --needed --noconfirm -- "$pkg" && return 0
+	fi
+	return 1
+}
+
+# makepkg_from_repo PKG REPO [PRE_STAGE_FN]
+# Clones REPO into a tmpdir and runs makepkg -si. PRE_STAGE_FN, if given, is
+# called with the build dir as $1 before makepkg.
+makepkg_from_repo() {
+	local pkg=$1 repo=$2 pre_stage=${3:-} tmp rc
+	if ! command -v makepkg >/dev/null 2>&1; then
+		err "makepkg not found; install base-devel first."
+		return 1
+	fi
+	if ! command -v git >/dev/null 2>&1; then
+		err "git not found; install git first."
+		return 1
+	fi
+	tmp=$(mktemp -d)
+	if [ "$DRY_RUN" -eq 1 ]; then
+		printf '+ git clone --depth=1 %s %s/%s\n' "$repo" "$tmp" "$pkg" >&2
+		[ -n "$pre_stage" ] && printf '+ %s %s/%s\n' "$pre_stage" "$tmp" "$pkg" >&2
+		printf '+ (cd %s/%s && makepkg -si --noconfirm)\n' "$tmp" "$pkg" >&2
+		rm -rf -- "$tmp"
+		return 0
+	fi
+	(
+		set -e
+		git clone --depth=1 -- "$repo" "$tmp/$pkg"
+		cd "$tmp/$pkg"
+		[ -n "$pre_stage" ] && "$pre_stage" "$tmp/$pkg"
+		makepkg -si --noconfirm
+	)
+	rc=$?
+	rm -rf -- "$tmp"
+	return $rc
+}
+
+# Pre-stage hook: dump the live DSDT into the build dir so manual:// is satisfied.
+stage_dsdt_dat() {
+	local dir=$1
+	log "[dsdt] dumping /sys/firmware/acpi/tables/DSDT -> ${dir}/dsdt.dat"
+	sudo cat /sys/firmware/acpi/tables/DSDT > "${dir}/dsdt.dat"
+}
+
+# install_aur_pkg PKG REPO [PRE_STAGE_FN]
+# With a pre-stage hook, AUR helpers are skipped (they won't satisfy manual://).
+install_aur_pkg() {
+	local pkg=$1 repo=$2 pre_stage=${3:-}
+	log "[aur] installing ${pkg}"
+	if [ -z "$pre_stage" ]; then
+		aur_helper_install "$pkg" && return 0
+		log "[aur] no helper succeeded for ${pkg}; falling back to git + makepkg"
+	fi
+	makepkg_from_repo "$pkg" "$repo" "$pre_stage"
+}
+
+apply_arch_aur_packages() {
+	local rc=0
+	install_aur_pkg minisforum-v3-accelerometer \
+		https://aur.archlinux.org/minisforum-v3-accelerometer.git \
+		|| rc=1
+	install_aur_pkg minisforum-v3se-dsdt \
+		https://github.com/Keyaku/minisforum-v3se-dsdt.git \
+		stage_dsdt_dat \
+		|| rc=1
+	if [ "$rc" -eq 0 ]; then
+		log "Ensure 'acpi_override' is in HOOKS in /etc/mkinitcpio.conf, then:"
+		log "  sudo mkinitcpio -P && reboot"
+	else
+		warn "one or more AUR packages failed to install."
+	fi
+	return $rc
 }
 
 # --- audio.volume.keys -----------------------------------------------------
