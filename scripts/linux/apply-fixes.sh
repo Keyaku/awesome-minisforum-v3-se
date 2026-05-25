@@ -42,6 +42,7 @@ usage() {
 		  camera.howdy={true|false}
 		  input.rotation.kde={true|false}
 		  input.copilot.remap={true|false}
+		  input.stylus.map={true|false}
 		  power.ryzenadj={true|false}
 
 		Examples:
@@ -544,6 +545,36 @@ apply_input_copilot_remap() {
 	local dest="${dir}/v3se-copilot.json"
 	copilot_preset_json | install_file "$dest"
 	log "Open input-remapper-gtk and activate preset 'v3se-copilot' to enable."
+}
+
+# --- input.stylus.map ------------------------------------------------------
+
+reg input.stylus.map \
+	"Pin the touchscreen + stylus to the internal panel (Wayland/KDE)" \
+	true
+
+applies_input_stylus_map() {
+	[ "$IS_KDE" -eq 1 ] || { FIX_NOTE[input.stylus.map]="not running KDE; skipping."; return 1; }
+	[ -e /sys/bus/i2c/drivers/i2c_hid_acpi/i2c-PNP0C50:00 ] \
+		|| { FIX_NOTE[input.stylus.map]="Goodix digitizer not bound; skipping."; return 1; }
+	return 0
+}
+
+preview_input_stylus_map() {
+	echo "--- kwinrc [Tablet] entries ---"
+	echo "PNP0C50:00 27C6:0121.OutputName         = <internal eDP from kscreen-doctor>"
+	echo "PNP0C50:00 27C6:0121 Stylus.OutputName  = <internal eDP from kscreen-doctor>"
+	echo "PNP0C50:00 27C6:0121 UNKNOWN.OutputName = <internal eDP from kscreen-doctor>"
+	echo
+	echo "Then: qdbus org.kde.KWin /KWin reconfigure"
+}
+
+apply_input_stylus_map() {
+	if [ "$DRY_RUN" -eq 1 ]; then
+		printf '+ %s\n' "${REPO_ROOT}/scripts/linux/input/map-stylus-to-internal.sh" >&2
+		return 0
+	fi
+	"${REPO_ROOT}/scripts/linux/input/map-stylus-to-internal.sh"
 }
 
 # --- power.ryzenadj --------------------------------------------------------

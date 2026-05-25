@@ -14,37 +14,46 @@
 #     dmesg.log -> controller reset, often post-resume
 
 set -euo pipefail
-
-if [ "$(id -u)" -ne 0 ]; then
-	exec sudo -E "$0" "$@"
-fi
-
-need() {
-	command -v "$1" >/dev/null 2>&1 || { echo "missing: $1" >&2; exit 1; }
-}
-need evtest
-need libinput
+. "$(dirname -- "$0")/../lib/common.sh"
+require_root "$@"
+need_cmd evtest udevadm journalctl
 
 outdir="${1:-/tmp/v3se-ghost-$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$outdir"
 echo "logging to $outdir"
 
-# Identify Goodix / touchscreen / pen event nodes by name.
+# Identify digitizer event nodes by walking sysfs from the bound i2c-HID
+# device — catches all sub-interfaces (touch, stylus, hover/"UNKNOWN")
+# regardless of how the kernel chose to name them.
 mapfile -t devs < <(
-	for ev in /dev/input/event*; do
-		name=$(udevadm info --query=property --name="$ev" 2>/dev/null \
-			| sed -n 's/^NAME=//p' | tr -d '"')
-		case "$name" in
-			*[Gg]oodix*|*GXTP*|*[Tt]ouchscreen*|*[Pp]en*|*[Ss]tylus*)
-				printf '%s\t%s\n' "$ev" "$name"
-				;;
-		esac
-	done
+	hid_root=/sys/bus/i2c/drivers/i2c_hid_acpi/i2c-PNP0C50:00
+	if [ -d "$hid_root" ]; then
+		for ev_sys in "$hid_root"/*/input/input*/event*; do
+			[ -d "$ev_sys" ] || continue
+			ev=/dev/input/${ev_sys##*/}
+			name=$(cat "${ev_sys%/event*}/name" 2>/dev/null) || name=
+			printf '%s\t%s\n' "$ev" "$name"
+		done
+	else
+		# Fallback: name-based scan (other hardware / unbound digitizer).
+		for ev in /dev/input/event*; do
+			name=$(udevadm info --query=property --name="$ev" 2>/dev/null \
+				| sed -n 's/^NAME=//p' | tr -d '"')
+			case "$name" in
+				*[Gg]oodix*|*GXTP*|*27C6:0121*|*[Tt]ouchscreen*|*[Pp]en*|*[Ss]tylus*)
+					printf '%s\t%s\n' "$ev" "$name"
+					;;
+			esac
+		done
+	fi
 )
 
 if [ "${#devs[@]}" -eq 0 ]; then
-	echo "no touchscreen/pen devices matched — list all and pick manually:" >&2
-	libinput list-devices | grep -E '^(Device|Kernel):'
+	echo "no touchscreen/pen devices matched — listing all input devices:" >&2
+	for ev in /dev/input/event*; do
+		n=$(udevadm info --query=property --name="$ev" | sed -n 's/^NAME=//p' | tr -d '"')
+		printf '  %s\t%s\n' "$ev" "$n"
+	done >&2
 	exit 1
 fi
 
@@ -60,10 +69,6 @@ while IFS=$'\t' read -r ev name; do
 	pids+=($!)
 done < <(printf '%s\n' "${devs[@]}")
 
-# libinput aggregate view — easier to spot the corner coords.
-libinput debug-events --show-keycodes >"$outdir/libinput.log" 2>&1 &
-pids+=($!)
-
 # Kernel log follower — catch i2c-hid resets, controller wakeups.
 journalctl -kf --since=now >"$outdir/dmesg.log" 2>&1 &
 pids+=($!)
@@ -75,9 +80,15 @@ pids+=($!)
 	echo "=== charger ==="; grep . /sys/class/power_supply/*/{online,status,model_name} 2>/dev/null || true
 	echo "=== usb ==="; lsusb
 	echo "=== i2c-hid ==="; ls /sys/bus/i2c/drivers/i2c_hid_acpi/ 2>/dev/null || true
-	echo "=== libinput-quirks ==="
+	echo "=== udev properties (touchscreen/pen) ==="
+	while IFS=$'\t' read -r ev name; do
+		echo "--- $ev ($name) ---"
+		udevadm info --query=property --name="$ev"
+	done < <(printf '%s\n' "${devs[@]}")
+	echo "=== all input devices ==="
 	for ev in /dev/input/event*; do
-		libinput quirks list "$ev" 2>/dev/null | sed "s|^|$ev: |"
+		n=$(udevadm info --query=property --name="$ev" | sed -n 's/^NAME=//p' | tr -d '"')
+		printf '  %s\t%s\n' "$ev" "$n"
 	done
 } >"$outdir/state.txt" 2>&1
 

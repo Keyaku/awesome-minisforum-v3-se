@@ -10,16 +10,25 @@ See [upstream discussion](https://github.com/mudkipme/awesome-minisforum-v3/issu
 
 _Credits to Briar._
 
-## Diagnosing ghost touches / spurious stylus events
+## Ghost touches / phantom stylus hover
 
-Occasional reports of spurious pointer activity (often hover-previews near the bottom corners), sometimes with the stylus powered off. No confirmed root cause or fix yet — the Goodix i2c-HID touchscreen is driven by `hid-multitouch` and has no V3-SE-specific quirk upstream.
+Symptom: pointer jumps to a fixed area of the screen (typically near the bottom edge) and triggers hover previews / pop-ups even with no finger or stylus on the panel. Reproduces on external monitors too, because the desktop is acting on real (but bogus) input events from the digitizer.
 
-In case someone stumbles upon this occurrence, run [capture-ghost-touches.sh](../../scripts/linux/input/capture-ghost-touches.sh) to log `evtest`, `libinput debug-events`, and `journalctl -kf` from the touchscreen + pen nodes into a timestamped directory. Inspect the logs for:
-- Events at fixed coordinates (e.g. `(0, max_y)`, `(max_x, max_y)`) — points to a digitizer/firmware issue; candidate for a libinput quirk.
-- Wandering coordinates that correlate with the charger or a TB dock being plugged — points to EMI; test on battery with the dock disconnected.
-- Bursts that line up with `i2c_hid` / `hid-multitouch` lines — controller reset, often post-resume. See [linux-surface#417](https://github.com/linux-surface/linux-surface/issues/417) for the canonical resume-ghost-touch pattern on similar hardware.
+**Root cause:** the Goodix `27C6:0121` i2c-HID digitizer latches into a stuck "tool in proximity" state and keeps reporting a phantom pen at a near-edge coordinate. `evtest /dev/input/event11` shows `ABS_MISC = 1` (tool in range) with `ABS_X` / `ABS_Y` pinned, while no stylus is present.
 
-If you collect a reproducer, please open an issue with the captured directory attached.
+**Fix:** unbind and rebind the `i2c_hid_acpi` driver for the digitizer — resets the controller and clears the latched state without rebooting. Run [fix-ghost-touches.sh](../../scripts/linux/input/fix-ghost-touches.sh). Touch + stylus drop for ~2 seconds and come back clean.
+
+**Trigger:** not yet pinned down. Does not appear strictly tied to resume from suspend.
+
+**Suspect — screen protector:** the official Minisforum screen protector is fiddly to apply and prone to micro-detachment at the corners. Capacitive digitizers sense field changes through the glass, and an air gap from a lifted protector edge distorts the local field; the geometry of the phantom coordinate often matches the location of the lifted area. Worth re-seating or removing the protector if the ghost coordinate consistently lines up with a visible bubble or lifted corner.
+
+**Diagnostics:** [capture-ghost-touches.sh](../../scripts/linux/input/capture-ghost-touches.sh) logs `evtest` per device + kernel ring buffer + udev properties into a timestamped directory. Useful for confirming the digitizer is the source (vs. a wireless receiver or trackpad) and capturing the stuck coordinates for a potential upstream report.
+
+## Stylus / touch input lands on the external monitor
+
+On Wayland/KDE, absolute pointer devices (touchscreen, stylus) must be pinned to a specific output. If unmapped, KWin spreads their coordinate space across the whole desktop layout — a tap at the centre of the tablet then ends up on the centre of the bounding box of all monitors, i.e. on the external one.
+
+Fix: [map-stylus-to-internal.sh](../../scripts/linux/input/map-stylus-to-internal.sh) detects the internal `eDP` output via `kscreen-doctor` and writes the `kwinrc [Tablet]` `OutputName` entry for the three digitizer sub-devices (touch, stylus, hover), then reconfigures KWin. Also wired into `apply-fixes.sh` as `input.stylus.map`.
 
 ## Remap the Copilot button
 
